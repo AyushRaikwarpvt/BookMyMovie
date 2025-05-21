@@ -3,6 +3,7 @@ package Service;
 import Configaure.DataBaseConfig;
 
 import java.sql.*;
+import java.util.List;
 import java.util.Scanner;
 
 public class BookMyMoviesys {
@@ -34,7 +35,7 @@ public class BookMyMoviesys {
     public void DiplaysThreaters(String city) {
         try {
             Connection con = DataBaseConfig.getConnection();
-            PreparedStatement smt = con.prepareStatement("SELECT * FROM theaters WHERE city = ?");
+            PreparedStatement smt = con.prepareStatement("SELECT * FROM theaters WHERE LOWER(city) = LOWER(?)");
             smt.setString(1, city);
             ResultSet res = smt.executeQuery();
 
@@ -56,8 +57,8 @@ public class BookMyMoviesys {
             PreparedStatement smt = con.prepareStatement(
                     "SELECT * FROM shows WHERE movie_id = ? AND theater_id = ?"
             );
-            smt.setInt(1, movieId);      // 1st ?
-            smt.setInt(2, theaterId);    // 2nd ?
+            smt.setInt(1, movieId);
+            smt.setInt(2, theaterId);
 
             ResultSet rs = smt.executeQuery();
 
@@ -69,7 +70,6 @@ public class BookMyMoviesys {
                                 "Theater ID: " + rs.getInt("theater_id") + ", " +
                                 "Timing: " + rs.getString("Timing") + ", " +
                                 "Available Seats: " + rs.getInt("available_Seats")
-
                 );
             }
 
@@ -78,13 +78,109 @@ public class BookMyMoviesys {
         }
     }
 
+    public void showAvailableSeats(int showId) {
+        try {
+            Connection con = DataBaseConfig.getConnection();
+            PreparedStatement ps = con.prepareStatement("SELECT seat_number FROM seat WHERE show_id = ? AND is_booked = false");
+            ps.setInt(1, showId);
+            ResultSet rs = ps.executeQuery();
 
-    public static void main(String[] args) {
+            System.out.println("✅ Available Seats:");
+            boolean any = false;
+            while (rs.next()) {
+                System.out.print(rs.getString("seat_number") + " ");
+                any = true;
+            }
+            if (!any) {
+                System.out.println("None");
+            } else {
+                System.out.println();
+            }
 
-        BookMyMoviesys obj = new BookMyMoviesys();
-//          obj.DisplayMovies();
-//        obj.DiplaysThreaters("Indore");
-//        obj.displayShows(1,1);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
+    public void showBookedSeats(int showId) {
+        try {
+            Connection con = DataBaseConfig.getConnection();
+            PreparedStatement ps = con.prepareStatement("SELECT seat_number FROM seat WHERE show_id = ? AND is_booked = true");
+            ps.setInt(1, showId);
+            ResultSet rs = ps.executeQuery();
+
+            System.out.println("❌ Already Booked Seats:");
+            boolean any = false;
+            while (rs.next()) {
+                System.out.print(rs.getString("seat_number") + " ");
+                any = true;
+            }
+            if (!any) {
+                System.out.println("None");
+            } else {
+                System.out.println();
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void bookticket(int user_id, int show_id, List<String> selectedseats) {
+        Connection con = null;
+        try {
+            con = DataBaseConfig.getConnection();
+            con.setAutoCommit(false);
+
+            boolean AlreadyBookedSeat = false;
+
+            for (String seat : selectedseats) {
+                PreparedStatement ps = con.prepareStatement("SELECT * FROM seat WHERE seat_number = ? AND show_id = ?");
+                ps.setString(1, seat);
+                ps.setInt(2, show_id);
+                ResultSet rs = ps.executeQuery();
+
+                if (rs.next() && rs.getBoolean("is_booked")) {
+                    AlreadyBookedSeat = true;
+                    System.out.println("Seat " + seat + " is already booked. Please choose another seat.");
+                }
+            }
+
+            if (AlreadyBookedSeat) {
+                System.out.println("Booking failed. Some seats are already booked.");
+                con.rollback();
+                return;
+            }
+
+            for (String seat : selectedseats) {
+                PreparedStatement ps = con.prepareStatement("UPDATE seat SET is_booked = true WHERE seat_number = ? AND show_id = ?");
+                ps.setString(1, seat);
+                ps.setInt(2, show_id);
+                ps.executeUpdate();
+            }
+
+            double seatPrice = 200.0;
+            double totalPrice = selectedseats.size() * seatPrice;
+
+            PreparedStatement ps = con.prepareStatement("INSERT INTO booking (user_id, show_id, seats_booked, total_price) VALUES (?, ?, ?, ?)");
+            ps.setInt(1, user_id);
+            ps.setInt(2, show_id);
+            ps.setString(3, String.join(", ", selectedseats));
+            ps.setDouble(4, totalPrice);
+            ps.executeUpdate();
+
+            con.commit();
+            System.out.println("✅ Booking successful! Seats: " + selectedseats + " | Total Price: ₹" + totalPrice);
+
+        } catch (SQLException e) {
+            if (con != null) {
+                try {
+                    con.rollback();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            throw new RuntimeException(e);
+        }
     }
 }
